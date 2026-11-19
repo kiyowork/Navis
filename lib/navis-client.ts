@@ -46,7 +46,7 @@ export async function followNavis(options: {
     if (!visit) return;
     options.onUpdate({
       phase: "check",
-      lines: ["Checking Navis for this container."],
+      lines: ["The booking agent is checking Navis. It saves a requested range first, then any opening on this date."],
       dialog: false,
       dateValue: visit.appointmentDate,
     });
@@ -132,7 +132,7 @@ async function requestBooking(visit: LiveVisit, organisation: string): Promise<B
     const response = await fetch("/api/navis/book", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...visit, truckingCompany: organisation }),
+      body: JSON.stringify({ ...visit, truckingCompany: organisation, pursue: true }),
     });
     return (await response.json()) as BookPayload;
   } catch {

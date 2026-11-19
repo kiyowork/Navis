@@ -16,6 +16,7 @@ type Body = {
   truckLicense?: string;
   driverCard?: string;
   reference?: string;
+  pursue?: boolean;
 };
 
 export async function POST(request: Request) {
@@ -57,6 +58,7 @@ export async function POST(request: Request) {
     driverCard: body.driverCard?.trim() || "",
     reference: body.reference?.trim() || "",
     save: true,
+    pursue: body.pursue !== false,
   });
   return Response.json(result);
 }
