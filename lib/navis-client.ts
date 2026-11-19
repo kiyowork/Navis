@@ -1,4 +1,4 @@
-import { instantForRelease, nextRelease, terminalParts, type Priority, type Slot } from "@/lib/booking";
+import type { Priority, Slot } from "@/lib/booking";
 
 export type LiveVisit = {
   gate: string;
@@ -33,22 +33,31 @@ type BookPayload = {
   quotaCount?: number;
 };
 
+const RETRY_PAUSE_MS = 8_000;
+
 export async function followNavis(options: {
   cancelled: () => boolean;
   visit: () => LiveVisit | null;
   organisation: () => string;
   onUpdate: (patch: LivePatch) => void;
 }) {
+  let showDialog = false;
   while (!options.cancelled()) {
     const visit = options.visit();
     if (!visit) return;
-    options.onUpdate({ phase: "check", lines: ["Checking Navis for this container."], dialog: false });
+    options.onUpdate({
+      phase: "check",
+      lines: ["Checking Navis for this container."],
+      dialog: showDialog,
+      dateValue: visit.appointmentDate,
+    });
     const payload = await requestBooking(visit, options.organisation());
     if (options.cancelled()) return;
     const lines = payload.log ?? [];
+    showDialog = payload.status === "no-openings" || lines.some((line) => /no appointment openings/i.test(line));
     const shared = {
       openings: payload.openings,
-      dialog: payload.status === "no-openings",
+      dialog: showDialog,
       quotaAdd: payload.quotaCount || 0,
       dateValue: visit.appointmentDate,
     };
@@ -63,24 +72,21 @@ export async function followNavis(options: {
       });
       return;
     }
-    if (!payload.retry) {
+    if (payload.status === "duplicate") {
       options.onUpdate({
         ...shared,
         phase: "stopped",
         lines,
-        stopReason: lines.at(-1) || "Navis stopped this window.",
+        dialog: false,
+        stopReason: lines.at(-1) || "Navis already has an appointment for this container.",
       });
       return;
     }
-    const release = nextRelease(terminalParts(new Date()));
-    const wait = release
-      ? Math.max(20_000, instantForRelease(release.iso, release.time).getTime() - Date.now())
-      : 60_000;
-    const when = release
-      ? `Next check at ${release.time} on ${release.iso.slice(8, 10)}/${release.iso.slice(5, 7)}/${release.iso.slice(0, 4)}.`
-      : "The next check is in a minute.";
-    options.onUpdate({ ...shared, phase: "monitoring", lines: [...lines, when] });
-    await sleep(wait, options.cancelled);
+    const again = showDialog
+      ? "No Appointment Openings Available. The run keeps checking until one can be saved."
+      : "The run keeps checking until an appointment is saved.";
+    options.onUpdate({ ...shared, phase: "check", lines: [...lines, again] });
+    await sleep(RETRY_PAUSE_MS, options.cancelled);
   }
 }
 
@@ -96,7 +102,7 @@ async function requestBooking(visit: LiveVisit, organisation: string): Promise<B
     return {
       status: "error",
       retry: true,
-      log: ["The desk could not reach the booking service. It will try again at the next release."],
+      log: ["The desk could not reach the booking service. It will check again."],
     };
   }
 }
