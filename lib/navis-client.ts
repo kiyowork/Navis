@@ -1,4 +1,4 @@
-import type { Priority, Slot } from "@/lib/booking";
+import type { Priority, RunPhase, Slot } from "@/lib/booking";
 
 export type LiveVisit = {
   gate: string;
@@ -14,7 +14,7 @@ export type LiveVisit = {
 };
 
 export type LivePatch = {
-  phase: "check" | "monitoring" | "secured" | "stopped";
+  phase: RunPhase;
   lines: string[];
   openings?: Slot[];
   selected?: Slot | null;
@@ -41,25 +41,21 @@ export async function followNavis(options: {
   organisation: () => string;
   onUpdate: (patch: LivePatch) => void;
 }) {
-  let showDialog = false;
   while (!options.cancelled()) {
     const visit = options.visit();
     if (!visit) return;
     options.onUpdate({
       phase: "check",
       lines: ["Checking Navis for this container."],
-      dialog: showDialog,
+      dialog: false,
       dateValue: visit.appointmentDate,
     });
     const payload = await requestBooking(visit, options.organisation());
     if (options.cancelled()) return;
     const lines = payload.log ?? [];
-    showDialog = payload.status === "no-openings" || lines.some((line) => /no appointment openings/i.test(line));
     const shared = {
       openings: payload.openings,
-      dialog: showDialog,
       quotaAdd: payload.quotaCount || 0,
-      dateValue: visit.appointmentDate,
     };
     if (payload.status === "secured") {
       options.onUpdate({
@@ -68,6 +64,7 @@ export async function followNavis(options: {
         lines,
         selected: payload.selected ?? null,
         dialog: false,
+        dateValue: visit.appointmentDate,
         stopReason: null,
       });
       return;
@@ -78,14 +75,54 @@ export async function followNavis(options: {
         phase: "stopped",
         lines,
         dialog: false,
+        dateValue: visit.appointmentDate,
         stopReason: lines.at(-1) || "Navis already has an appointment for this container.",
       });
       return;
     }
-    const again = showDialog
-      ? "No Appointment Openings Available. The run keeps checking until one can be saved."
-      : "The run keeps checking until an appointment is saved.";
-    options.onUpdate({ ...shared, phase: "check", lines: [...lines, again] });
+    const noOpenings =
+      payload.status === "no-openings" || lines.some((line) => /no appointment openings/i.test(line));
+    if (noOpenings) {
+      options.onUpdate({
+        ...shared,
+        phase: "check",
+        lines,
+        dialog: true,
+        dateValue: visit.appointmentDate,
+      });
+      await sleep(900, options.cancelled);
+      if (options.cancelled()) return;
+      options.onUpdate({
+        phase: "dismiss",
+        lines: ["Dismissed \u201cNo Appointment Openings Available\u201d."],
+        dialog: false,
+      });
+      await sleep(600, options.cancelled);
+      if (options.cancelled()) return;
+      options.onUpdate({
+        phase: "clear",
+        lines: ["Cleared the appointment date."],
+        dialog: false,
+        dateValue: "",
+      });
+      await sleep(600, options.cancelled);
+      if (options.cancelled()) return;
+      options.onUpdate({
+        phase: "reenter",
+        lines: ["Entered the date again. Refreshing Appointment Openings."],
+        dialog: false,
+        dateValue: visit.appointmentDate,
+      });
+      await sleep(400, options.cancelled);
+      continue;
+    }
+    options.onUpdate({
+      ...shared,
+      phase: "check",
+      lines: [...lines, "The run keeps checking until an appointment is saved."],
+      dialog: false,
+      dateValue: visit.appointmentDate,
+    });
     await sleep(RETRY_PAUSE_MS, options.cancelled);
   }
 }
