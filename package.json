@@ -10,10 +10,12 @@
     "test": "node --experimental-strip-types --test lib/booking.test.ts"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^153.0.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
     "lucide-react": "^1.75.0",
     "next": "^15.5.29",
+    "puppeteer-core": "^25.18.1",
     "radix-ui": "^1.8.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
