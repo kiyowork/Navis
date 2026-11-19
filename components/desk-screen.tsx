@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDisplayDate, parseDisplayDate, RELEASE_TIMES, slotLabel, type Priority, type RunState, type TerminalParts } from "@/lib/booking";
 
-const GATES = ["109 (ITZ 109)", "203 (ITZ 203 Virtual Gate)"];
 const TRANSACTIONS = ["Drop Off Export", "Drop Off Empty", "Pick Up Import"];
 
 export type RangeRow = { id: string; from: string; to: string };
@@ -67,6 +66,27 @@ export function DeskScreen(props: {
   onStop: (id: string) => void;
 }) {
   const { session, organisation, name, onOrganisation, onName, onSignIn, terminal, upcoming, windows, active, onSelectWindow, securedCount, quotaTotal, onAdvance, onSignOut, formError, logRef, onUpdateVisit, onAddWindow, onStart, onStop } = props;
+  const [gates, setGates] = useState<string[]>([]);
+  const [gatesError, setGatesError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/gates")
+      .then(async (response) => {
+        if (!response.ok) throw new Error("load");
+        return response.json() as Promise<{ gates?: string[] }>;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setGates(data.gates ?? []);
+        setGatesError(data.gates?.length ? "" : "Navis returned no gates.");
+      })
+      .catch(() => {
+        if (!cancelled) setGatesError("The Navis gate list did not load.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   if (!session) {
     return (
       <main className="mx-auto flex min-h-screen max-w-lg flex-col justify-center px-4 py-10">
@@ -112,7 +132,7 @@ export function DeskScreen(props: {
         </div>
       </header>
       <div className="mx-auto max-w-6xl px-4 py-4">
-        <p className="mb-4 text-sm leading-6 text-muted-foreground">This desk runs the booking rules on a stand-in of the Navis Add Appointment screen. A live Navis address is not connected. Advance the terminal clock to a release, then the open window checks, refreshes once if nothing is listed, and saves the earliest or latest interval inside the ranges.</p>
+        <p className="mb-4 text-sm leading-6 text-muted-foreground">This desk runs the booking rules on a stand-in of the Navis Add Appointment screen. A live Navis address is not connected. After Start, a window keeps moving to each release and checking again until it books one appointment or you press Stop.</p>
         <div className="mb-4 flex gap-2 overflow-x-auto">
           {windows.map((deskWindow, index) => (
             <Button key={deskWindow.id} type="button" variant={deskWindow.id === active.id ? "default" : "outline"} onClick={() => onSelectWindow(deskWindow.id)}>
@@ -167,10 +187,11 @@ export function DeskScreen(props: {
                 <legend className="mb-2 text-sm font-semibold">Basics</legend>
                 <Field label="Gate/Zone" required empty={!active.visit.gate}>
                   <Select key={`${active.id}-gate`} value={active.visit.gate} disabled={locked} onValueChange={(gate) => onUpdateVisit(active.id, { gate })}>
-                    <SelectTrigger className={fieldTone(!active.visit.gate)}><SelectValue placeholder="Select a gate" /></SelectTrigger>
-                    <SelectContent>{GATES.map((gate) => <SelectItem key={gate} value={gate}>{gate}</SelectItem>)}</SelectContent>
+                    <SelectTrigger className={fieldTone(!active.visit.gate)}><SelectValue placeholder={gates.length ? "Select a Navis gate" : "Loading gates from Navis"} /></SelectTrigger>
+                    <SelectContent>{gates.map((gate) => <SelectItem key={gate} value={gate}>{gate}</SelectItem>)}</SelectContent>
                   </Select>
                 </Field>
+                {gatesError ? <p className="text-sm text-rose-700 md:col-span-2">{gatesError}</p> : null}
                 <Field label="Transaction Type" required empty={!active.visit.transaction}>
                   <Select key={`${active.id}-transaction`} value={active.visit.transaction} disabled={locked} onValueChange={(transaction) => onUpdateVisit(active.id, { transaction })}>
                     <SelectTrigger className={fieldTone(!active.visit.transaction)}><SelectValue placeholder="Select a type" /></SelectTrigger>
