@@ -8,13 +8,12 @@ import {
   initialRun,
   instantForRelease,
   nextRelease,
-  startRun,
   terminalParts,
   tick,
   wakeRun,
-  type Priority,
   type RunPhase,
 } from "@/lib/booking";
+import { followNavis, type LivePatch } from "@/lib/navis-client";
 
 const ACTIVE = new Set<RunPhase>([
   "click",
@@ -64,6 +63,12 @@ export function Desk() {
   const [activeId, setActiveId] = useState("");
   const [formError, setFormError] = useState("");
   const logRef = useRef<HTMLOListElement>(null);
+  const windowsRef = useRef(windows);
+  const sessionRef = useRef(session);
+  const liveToken = useRef<Record<string, number>>({});
+  const liveMode = useRef<Set<string>>(new Set());
+  windowsRef.current = windows;
+  sessionRef.current = session;
 
   useEffect(() => {
     const now = new Date();
@@ -82,8 +87,10 @@ export function Desk() {
     [windows],
   );
   const quotaTotal = windows.reduce((sum, window) => sum + window.run.quotaCount, 0);
-  const busy = windows.some((window) => ACTIVE.has(window.run.phase));
-  const awaitingRelease = windows.some((window) => window.run.phase === "monitoring");
+  const busy = windows.some((window) => ACTIVE.has(window.run.phase) && !liveMode.current.has(window.id));
+  const awaitingRelease = windows.some(
+    (window) => window.run.phase === "monitoring" && !liveMode.current.has(window.id),
+  );
 
   useEffect(() => {
     logRef.current?.lastElementChild?.scrollIntoView({ block: "nearest" });
@@ -94,7 +101,7 @@ export function Desk() {
     const timer = window.setTimeout(() => {
       setWindows((current) =>
         current.map((deskWindow) => {
-          if (!ACTIVE.has(deskWindow.run.phase)) return deskWindow;
+          if (liveMode.current.has(deskWindow.id) || !ACTIVE.has(deskWindow.run.phase)) return deskWindow;
           const next = tick({
             run: deskWindow.run,
             ranges: deskWindow.visit.ranges.map(({ from, to }) => ({ from, to })),
@@ -124,7 +131,7 @@ export function Desk() {
       setClock(instantForRelease(release.iso, release.time));
       setWindows((current) =>
         current.map((deskWindow) => {
-          if (deskWindow.run.phase !== "monitoring") return deskWindow;
+          if (liveMode.current.has(deskWindow.id) || deskWindow.run.phase !== "monitoring") return deskWindow;
           return {
             ...deskWindow,
             run: wakeRun(deskWindow.run),
@@ -166,7 +173,7 @@ export function Desk() {
     setClock(instantForRelease(upcoming.iso, upcoming.time));
     setWindows((current) =>
       current.map((deskWindow) => {
-        if (deskWindow.run.phase !== "monitoring") return deskWindow;
+        if (liveMode.current.has(deskWindow.id) || deskWindow.run.phase !== "monitoring") return deskWindow;
         return {
           ...deskWindow,
           run: wakeRun(deskWindow.run),
@@ -196,14 +203,70 @@ export function Desk() {
       return;
     }
     setFormError("");
+    const token = (liveToken.current[deskWindow.id] ?? 0) + 1;
+    liveToken.current[deskWindow.id] = token;
+    liveMode.current.add(deskWindow.id);
     setWindows((current) =>
       current.map((item) =>
-        item.id === deskWindow.id ? { ...item, run: startRun(item.run), log: [...item.log, "Start."] } : item,
+        item.id === deskWindow.id
+          ? {
+              ...item,
+              run: { ...item.run, phase: "check", stopReason: null },
+              log: [...item.log, "Start. This window will save on Navis when an interval matches."],
+            }
+          : item,
       ),
+    );
+    void followNavis({
+      cancelled: () => liveToken.current[deskWindow.id] !== token,
+      visit: () => {
+        const current = windowsRef.current.find((item) => item.id === deskWindow.id);
+        if (!current) return null;
+        return {
+          gate: current.visit.gate,
+          transaction: current.visit.transaction,
+          container: current.visit.container,
+          lineOperator: current.visit.lineOperator,
+          truckLicense: current.visit.truckLicense,
+          driverCard: current.visit.driverCard,
+          reference: current.visit.reference,
+          appointmentDate: current.visit.appointmentDate,
+          ranges: current.visit.ranges.map(({ from, to }) => ({ from, to })),
+          priority: current.visit.priority,
+        };
+      },
+      organisation: () => sessionRef.current?.organisation || "",
+      onUpdate: (patch) => applyLive(deskWindow.id, token, patch),
+    });
+  }
+
+  function applyLive(id: string, token: number, patch: LivePatch) {
+    if (liveToken.current[id] !== token) return;
+    setWindows((current) =>
+      current.map((item) => {
+        if (item.id !== id) return item;
+        return {
+          ...item,
+          run: {
+            ...item.run,
+            phase: patch.phase,
+            openings: patch.openings ?? item.run.openings,
+            selectedId: patch.selected?.id ?? item.run.selectedId,
+            securedSlot: patch.phase === "secured" ? (patch.selected ?? item.run.securedSlot) : item.run.securedSlot,
+            dialog: patch.dialog ?? item.run.dialog,
+            quotaCount: item.run.quotaCount + (patch.quotaAdd || 0),
+            stopReason: patch.stopReason === undefined ? item.run.stopReason : patch.stopReason,
+            dateValue: patch.dateValue ?? item.run.dateValue,
+          },
+          log: [...item.log, ...patch.lines],
+        };
+      }),
     );
   }
 
   function stop(id: string) {
+    liveToken.current[id] = (liveToken.current[id] ?? 0) + 1;
+    liveMode.current.delete(id);
     setWindows((current) =>
       current.map((item) =>
         item.id === id
