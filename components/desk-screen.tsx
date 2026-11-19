@@ -132,7 +132,7 @@ export function DeskScreen(props: {
         </div>
       </header>
       <div className="mx-auto max-w-6xl px-4 py-4">
-        <p className="mb-4 text-sm leading-6 text-muted-foreground">This desk runs the booking rules on a stand-in of the Navis Add Appointment screen. A live Navis address is not connected. After Start, a window keeps moving to each release and checking again until it books one appointment or you press Stop.</p>
+        <p className="mb-4 text-sm leading-6 text-muted-foreground">Start sends the gate, container, date, and time ranges on this window to Navis and presses Save when an interval matches. Leave this page open. The window checks again at each Johannesburg release until one appointment is booked or you press Stop.</p>
         <div className="mb-4 flex gap-2 overflow-x-auto">
           {windows.map((deskWindow, index) => (
             <Button key={deskWindow.id} type="button" variant={deskWindow.id === active.id ? "default" : "outline"} onClick={() => onSelectWindow(deskWindow.id)}>
@@ -232,7 +232,7 @@ export function DeskScreen(props: {
                 ) : null}
               </fieldset>
               <div className="flex gap-2"><Button type="button" disabled>Save</Button><Button type="button" variant="outline" disabled>Cancel</Button></div>
-              <p className="text-xs text-zinc-500">Releases {RELEASE_TIMES.join(", ")}. The 13:00 interval in this stand-in answers that the quota is reached, so a range covering 13:00 and 14:00 shows the run moving on. A second window with the same container stops on a duplicate.</p>
+              <p className="text-xs text-zinc-500">Releases {RELEASE_TIMES.join(", ")} Johannesburg. Save runs on Navis. A quota reply skips that interval. A duplicate container stops the window.</p>
             </div>
           </section>
         </div>
