@@ -1,4 +1,3 @@
-// @ts-nocheck
 import puppeteer, { type Page } from "puppeteer-core";
 import { filterSlots, pickSlot, type Priority, type Range, type Slot } from "@/lib/booking";
 import { parseOpening } from "@/lib/openings";
@@ -60,7 +59,7 @@ export async function bookOnNavis(request: NavisBookRequest): Promise<NavisBookR
     log.push(`Gate set to ${request.gate}.`);
     await typeCombo(page, "Transaction Type:", 1, request.transaction, "Tab");
     await page.waitForFunction(
-      () => [...document.querySelectorAll(".z-label")].some((el) => (el.innerText || "").includes("Container Id")),
+      () => [...document.querySelectorAll(".z-label")].some((el) => (el.textContent || "").includes("Container Id")),
       { timeout: 8000 },
     );
     log.push(`Transaction set to ${request.transaction}.`);
@@ -103,9 +102,7 @@ export async function bookOnNavis(request: NavisBookRequest): Promise<NavisBookR
       .map((line) => parseOpening(line, request.appointmentDate))
       .filter((slot): slot is Slot => slot !== null);
     log.push(
-      rawOpenings.length
-        ? `Openings: ${rawOpenings.slice(0, 8).join(" \u00b7 ")}`
-        : "The openings list was empty.",
+      rawOpenings.length ? `Openings: ${rawOpenings.slice(0, 8).join(" \u00b7 ")}` : "The openings list was empty.",
     );
     if (openings.length === 0) {
       await cancelForm(page);
@@ -203,7 +200,7 @@ async function signIn(page: Page, url: string, username: string, password: strin
   await page.keyboard.press("Enter");
   try {
     await page.waitForFunction(
-      () => (document.body?.innerText || "").includes("Gate") && location.href.includes("apexHomeView"),
+      () => (document.body?.textContent || "").includes("Gate") && location.href.includes("apexHomeView"),
       { timeout: 25000 },
     );
   } catch {
@@ -213,18 +210,18 @@ async function signIn(page: Page, url: string, username: string, password: strin
 
 async function openAddAppointment(page: Page) {
   for (const item of await page.$$(".app-nav li.z-menu")) {
-    const label = await item.evaluate((el) => (el.innerText || "").trim().split("\n")[0]);
+    const label = await item.evaluate((el) => (el.textContent || "").replace(/\s+/g, " ").trim().split(" ")[0]);
     if (label === "Gate") {
       await item.click();
       break;
     }
   }
   await page.waitForFunction(() =>
-    [...document.querySelectorAll(".z-menuitem-text")].some((el) => (el.innerText || "").trim() === "Appointments"),
+    [...document.querySelectorAll(".z-menuitem-text")].some((el) => (el.textContent || "").trim() === "Appointments"),
   );
   const menuClicked = await page.evaluate(() => {
     const item = [...document.querySelectorAll(".z-menuitem-text")].find(
-      (node) => (node.innerText || "").trim() === "Appointments",
+      (node) => (node.textContent || "").trim() === "Appointments",
     );
     (item as HTMLElement | undefined)?.click();
     return Boolean(item);
@@ -233,7 +230,7 @@ async function openAddAppointment(page: Page) {
   await page.waitForSelector(".add-button-section");
   await page.click(".add-button-section");
   await page.waitForFunction(() =>
-    [...document.querySelectorAll(".z-window-header")].some((el) => (el.innerText || "").includes("Add Appointment")),
+    [...document.querySelectorAll(".z-window-header")].some((el) => (el.textContent || "").includes("Add Appointment")),
   );
   await delay(400);
 }
@@ -251,10 +248,10 @@ async function selectOptional(page: Page, label: string, index: number, value: s
   const opened = await page.evaluate(
     (wanted, fieldIndex) => {
       const header = [...document.querySelectorAll(".z-window-header")].find((el) =>
-        (el.innerText || "").includes("Add Appointment"),
+        (el.textContent || "").includes("Add Appointment"),
       );
       const found = [...(header?.closest(".z-window")?.querySelectorAll(".z-label") || [])].find(
-        (el) => (el.innerText || "").replace(/\s+/g, " ").trim() === wanted,
+        (el) => (el.textContent || "").replace(/\s+/g, " ").trim() === wanted,
       );
       const input = [...(found?.closest("tr")?.querySelectorAll("input") || [])][fieldIndex];
       const button = input?.closest(".z-combobox")?.querySelector(".z-combobox-button");
@@ -269,7 +266,7 @@ async function selectOptional(page: Page, label: string, index: number, value: s
   await delay(700);
   const picked = await page.evaluate((wanted) => {
     const item = [...document.querySelectorAll(".z-comboitem-text")].find(
-      (el) => (el.innerText || "").replace(/\s+/g, " ").trim().toUpperCase() === wanted.toUpperCase(),
+      (el) => (el.textContent || "").replace(/\s+/g, " ").trim().toUpperCase() === wanted.toUpperCase(),
     );
     (item as HTMLElement | undefined)?.click();
     return (item?.textContent || "").replace(/\s+/g, " ").trim();
@@ -283,10 +280,10 @@ async function fillOptional(page: Page, label: string, index: number, value: str
   if (!trimmed) return;
   const present = await page.evaluate((wanted) => {
     const header = [...document.querySelectorAll(".z-window-header")].find((el) =>
-      (el.innerText || "").includes("Add Appointment"),
+      (el.textContent || "").includes("Add Appointment"),
     );
     return [...(header?.closest(".z-window")?.querySelectorAll(".z-label") || [])].some(
-      (el) => (el.innerText || "").replace(/\s+/g, " ").trim() === wanted,
+      (el) => (el.textContent || "").replace(/\s+/g, " ").trim() === wanted,
     );
   }, label);
   if (!present) return;
@@ -297,10 +294,10 @@ async function clickField(page: Page, label: string, index: number) {
   const box = await page.evaluate(
     (wanted, fieldIndex) => {
       const header = [...document.querySelectorAll(".z-window-header")].find((el) =>
-        (el.innerText || "").includes("Add Appointment"),
+        (el.textContent || "").includes("Add Appointment"),
       );
       const found = [...(header?.closest(".z-window")?.querySelectorAll(".z-label") || [])].find(
-        (el) => (el.innerText || "").replace(/\s+/g, " ").trim() === wanted,
+        (el) => (el.textContent || "").replace(/\s+/g, " ").trim() === wanted,
       );
       const input = [...(found?.closest("tr")?.querySelectorAll("input") || [])][fieldIndex];
       const rect = input?.getBoundingClientRect();
@@ -319,10 +316,10 @@ async function fieldValue(page: Page, label: string, index: number) {
   return page.evaluate(
     (wanted, fieldIndex) => {
       const header = [...document.querySelectorAll(".z-window-header")].find((el) =>
-        (el.innerText || "").includes("Add Appointment"),
+        (el.textContent || "").includes("Add Appointment"),
       );
       const found = [...(header?.closest(".z-window")?.querySelectorAll(".z-label") || [])].find(
-        (el) => (el.innerText || "").replace(/\s+/g, " ").trim() === wanted,
+        (el) => (el.textContent || "").replace(/\s+/g, " ").trim() === wanted,
       );
       return ([...(found?.closest("tr")?.querySelectorAll("input") || [])][fieldIndex] as HTMLInputElement | undefined)
         ?.value || "";
@@ -353,9 +350,9 @@ async function clearAndCommitDate(page: Page, iso: string) {
 
 async function popupText(page: Page, titlePart: string) {
   return page.evaluate((part) => {
-    const header = [...document.querySelectorAll(".z-window-header")].find((el) => (el.innerText || "").includes(part));
+    const header = [...document.querySelectorAll(".z-window-header")].find((el) => (el.textContent || "").includes(part));
     if (!header) return null;
-    return (header.closest(".z-window")?.innerText || "").replace(/\s+/g, " ").trim().slice(0, 400);
+    return (header.closest(".z-window")?.textContent || "").replace(/\s+/g, " ").trim().slice(0, 400);
   }, titlePart);
 }
 
@@ -366,10 +363,10 @@ async function dismissOpeningsDialog(page: Page) {
 
 async function closePopup(page: Page, titlePart: string) {
   await page.evaluate((part) => {
-    const header = [...document.querySelectorAll(".z-window-header")].find((el) => (el.innerText || "").includes(part));
+    const header = [...document.querySelectorAll(".z-window-header")].find((el) => (el.textContent || "").includes(part));
     const win = header?.closest(".z-window");
     if (!win) return;
-    const button = [...win.querySelectorAll("button")].find((el) => !/save/i.test(el.innerText || ""));
+    const button = [...win.querySelectorAll("button")].find((el) => !/save/i.test(el.textContent || ""));
     if (button) {
       (button as HTMLElement).click();
       return;
@@ -381,10 +378,10 @@ async function closePopup(page: Page, titlePart: string) {
 async function readOpenings(page: Page) {
   await page.evaluate(() => {
     const header = [...document.querySelectorAll(".z-window-header")].find((el) =>
-      (el.innerText || "").includes("Add Appointment"),
+      (el.textContent || "").includes("Add Appointment"),
     );
     const found = [...(header?.closest(".z-window")?.querySelectorAll(".z-label") || [])].find((el) =>
-      (el.innerText || "").includes("Appointment Openings"),
+      (el.textContent || "").includes("Appointment Openings"),
     );
     const input = [...(found?.closest("tr")?.querySelectorAll("input") || [])][1];
     (input?.closest(".z-combobox")?.querySelector(".z-combobox-button") as HTMLElement | null)?.click();
@@ -392,7 +389,7 @@ async function readOpenings(page: Page) {
   await delay(1000);
   return page.evaluate(() =>
     [...document.querySelectorAll(".z-comboitem")]
-      .map((el) => (el.innerText || "").replace(/\s+/g, " ").trim())
+      .map((el) => (el.textContent || "").replace(/\s+/g, " ").trim())
       .filter(Boolean),
   );
 }
@@ -400,7 +397,7 @@ async function readOpenings(page: Page) {
 async function chooseOpening(page: Page, label: string) {
   const picked = await page.evaluate((wanted) => {
     const item = [...document.querySelectorAll(".z-comboitem")].find(
-      (el) => (el.innerText || "").replace(/\s+/g, " ").trim() === wanted,
+      (el) => (el.textContent || "").replace(/\s+/g, " ").trim() === wanted,
     );
     (item as HTMLElement | undefined)?.click();
     return Boolean(item);
@@ -412,10 +409,10 @@ async function chooseOpening(page: Page, label: string) {
 async function clickNamed(page: Page, name: "Save" | "Cancel") {
   const box = await page.evaluate((wanted) => {
     const header = [...document.querySelectorAll(".z-window-header")].find((el) =>
-      (el.innerText || "").includes("Add Appointment"),
+      (el.textContent || "").includes("Add Appointment"),
     );
     const button = [...(header?.closest(".z-window")?.querySelectorAll("button") || [])].find(
-      (el) => (el.innerText || "").trim() === wanted,
+      (el) => (el.textContent || "").trim() === wanted,
     );
     const rect = button?.getBoundingClientRect();
     if (!rect || rect.width < 2) return null;
@@ -437,10 +434,10 @@ async function readSaveOutcome(page: Page): Promise<{ status: "secured" | "quota
   await delay(2500);
   const text = await page.evaluate(() => {
     const boxes = [...document.querySelectorAll(".z-window, .z-messagebox")]
-      .map((el) => (el.innerText || "").replace(/\s+/g, " ").trim())
+      .map((el) => (el.textContent || "").replace(/\s+/g, " ").trim())
       .filter((value) => value && !value.includes("Clusternode") && value.length < 600);
     const addOpen = [...document.querySelectorAll(".z-window-header")].some((el) =>
-      (el.innerText || "").includes("Add Appointment"),
+      (el.textContent || "").includes("Add Appointment"),
     );
     return { boxes: boxes.slice(0, 6), addOpen };
   });
