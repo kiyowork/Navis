@@ -83,6 +83,7 @@ export function Desk() {
   );
   const quotaTotal = windows.reduce((sum, window) => sum + window.run.quotaCount, 0);
   const busy = windows.some((window) => ACTIVE.has(window.run.phase));
+  const awaitingRelease = windows.some((window) => window.run.phase === "monitoring");
 
   useEffect(() => {
     logRef.current?.lastElementChild?.scrollIntoView({ block: "nearest" });
@@ -115,6 +116,28 @@ export function Desk() {
     }, 650);
     return () => window.clearTimeout(timer);
   }, [busy, clock, windows]);
+
+  useEffect(() => {
+    if (!clock || !terminal || !upcoming || busy || !awaitingRelease) return;
+    const release = upcoming;
+    const timer = window.setTimeout(() => {
+      setClock(instantForRelease(release.iso, release.time));
+      setWindows((current) =>
+        current.map((deskWindow) => {
+          if (deskWindow.run.phase !== "monitoring") return deskWindow;
+          return {
+            ...deskWindow,
+            run: wakeRun(deskWindow.run),
+            log: [
+              ...deskWindow.log,
+              `Release ${release.time} on ${formatDisplayDate(release.iso)}. The run continues.`,
+            ],
+          };
+        }),
+      );
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [awaitingRelease, busy, clock, terminal, upcoming]);
 
   function signIn(event: React.FormEvent) {
     event.preventDefault();
